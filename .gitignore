@@ -1,0 +1,37 @@
+# === CONFIGURATION (machine-specific, never commit) ===
+config.json
+
+# === TEST INFRASTRUCTURE (development only) ===
+tests/
+pytest.ini
+requirements-test.txt
+
+# === PYTHON CACHE ===
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# === VIRTUAL ENVIRONMENTS ===
+.venv/
+venv/
+env/
+
+# === BUILD ARTIFACTS ===
+*.egg-info/
+dist/
+build/
+*.egg
+
+# === IDE / OS ===
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# === LOGS AND DATA ===
+*.log
+data/
+outputs/

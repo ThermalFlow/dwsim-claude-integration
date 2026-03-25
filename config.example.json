@@ -1,0 +1,37 @@
+{
+  "dwsim": {
+    "install_path": "",
+    "_comment_install_path": "Set to your DWSIM installation directory, OR use the DWSIM_PATH environment variable (takes priority).",
+    "_examples": {
+      "windows": "C:/Program Files/DWSIM",
+      "linux": "/opt/dwsim",
+      "macos": "/Applications/DWSIM.app/Contents/Resources"
+    },
+    "version": "8.8.0",
+    "dlls": [
+      "DWSIM.Automation.dll",
+      "DWSIM.Interfaces.dll",
+      "DWSIM.GlobalSettings.dll",
+      "DWSIM.Thermodynamics.dll",
+      "DWSIM.UnitOperations.dll",
+      "DWSIM.Drawing.SkiaSharp.dll"
+    ]
+  },
+  "simulation": {
+    "default_timeout_seconds": 300,
+    "max_iterations": 100,
+    "convergence_tolerance": 1e-6,
+    "default_property_package": "Peng-Robinson"
+  },
+  "visualization": {
+    "default_dpi": 150,
+    "figure_size": [10, 6],
+    "style": "seaborn-v0_8-whitegrid"
+  },
+  "paths": {
+    "data_dir": "data",
+    "output_dir": "data/outputs",
+    "cache_dir": "data/cache",
+    "logs_dir": "data/logs"
+  }
+}
