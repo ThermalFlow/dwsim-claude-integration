@@ -45,6 +45,45 @@ class FlowsheetManager:
         "spec": "Spec",
     }
 
+    # Maps type keys to Python wrapper classes that expose helper methods
+    # (set_light_key, set_outlet_temperature, set_efficiency, etc.)
+    # Populated lazily via _get_unitop_wrappers() to avoid circular imports.
+    _UNITOP_WRAPPERS: dict = {}
+
+    @classmethod
+    def _ensure_wrappers_loaded(cls) -> None:
+        """Populate _UNITOP_WRAPPERS on first use."""
+        if cls._UNITOP_WRAPPERS:
+            return
+        from ..unitops.columns import DistillationColumn, AbsorptionColumn, ShortcutColumn
+        from ..unitops.exchangers import HeatExchanger, Heater, Cooler
+        from ..unitops.pumps_compressors import Pump, Compressor, Expander, Valve
+        from ..unitops.reactors import CSTR, PFR, GibbsReactor, EquilibriumReactor
+        from ..unitops.separators import FlashSeparator, ComponentSeparator, Filter
+        from ..unitops.mixers_splitters import Mixer, Splitter, Recycle
+        cls._UNITOP_WRAPPERS = {
+            "distillation":  DistillationColumn,
+            "absorption":    AbsorptionColumn,
+            "shortcut":      ShortcutColumn,
+            "heat_exchanger": HeatExchanger,
+            "heater":        Heater,
+            "cooler":        Cooler,
+            "pump":          Pump,
+            "compressor":    Compressor,
+            "expander":      Expander,
+            "valve":         Valve,
+            "cstr":          CSTR,
+            "pfr":           PFR,
+            "gibbs":         GibbsReactor,
+            "equilibrium":   EquilibriumReactor,
+            "flash":         FlashSeparator,
+            "separator":     ComponentSeparator,
+            "filter":        Filter,
+            "mixer":         Mixer,
+            "splitter":      Splitter,
+            "recycle":       Recycle,
+        }
+
     def __init__(self, flowsheet: Any, automation: Any):
         """Initialize the flowsheet manager.
 
@@ -179,7 +218,19 @@ class FlowsheetManager:
                 logger.info(f"Added energy_stream '{name}' at ({x}, {y})")
                 return wrapper
 
-            # Generic unit operation — return raw simulation object
+            # Unit operation — return the Python wrapper if one exists,
+            # otherwise fall back to the raw DWSIM simulation object.
+            self._ensure_wrappers_loaded()
+            wrapper_class = self._UNITOP_WRAPPERS.get(obj_type)
+            if wrapper_class is not None:
+                wrapper = wrapper_class(self._flowsheet, name, x, y)
+                if not wrapper.create():
+                    return None
+                self._objects[name] = wrapper.dwsim_object
+                logger.info(f"Added {obj_type} '{name}' at ({x}, {y})")
+                return wrapper
+
+            # Fallback for types with no dedicated wrapper
             dwsim_type_name = self.OBJECT_TYPES[obj_type]
             from DWSIM.Interfaces.Enums.GraphicObjects import ObjectType
             obj_type_enum = getattr(ObjectType, dwsim_type_name)
