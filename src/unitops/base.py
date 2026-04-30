@@ -81,6 +81,10 @@ class UnitOperationBase(ABC):
     def set_property(self, name: str, value: Any) -> bool:
         """Set a property on the equipment object.
 
+        Uses .NET reflection so that Nullable[T] and enum-typed properties
+        (which are inaccessible via the ISimulationObject interface through
+        plain ``setattr``) are handled correctly.
+
         Args:
             name: Property name.
             value: Value to set.
@@ -93,26 +97,76 @@ class UnitOperationBase(ABC):
             return False
 
         try:
+            prop_info = self._obj.GetType().GetProperty(name)
+            if prop_info is not None and prop_info.CanWrite:
+                from System import Convert
+                from System import Enum as NetEnum
+
+                prop_type = prop_info.PropertyType
+
+                if (prop_type.IsGenericType
+                        and "Nullable" in prop_type.GetGenericTypeDefinition().FullName):
+                    # Nullable[T] — convert to the inner type before boxing
+                    inner = prop_type.GetGenericArguments()[0]
+                    if inner.IsEnum:
+                        net_val = NetEnum.ToObject(inner, int(value))
+                    else:
+                        net_val = Convert.ChangeType(value, inner)
+                    prop_info.SetValue(self._obj, net_val, None)
+
+                elif prop_type.IsEnum:
+                    net_val = NetEnum.ToObject(prop_type, int(value))
+                    prop_info.SetValue(self._obj, net_val, None)
+
+                else:
+                    prop_info.SetValue(self._obj, value, None)
+
+                logger.debug(f"Set {self._name}.{name} = {value}")
+                return True
+
+            # Fallback: direct attribute access via pythonnet
+            # (works for properties exposed on the ISimulationObject interface)
             setattr(self._obj, name, value)
-            logger.debug(f"Set {self._name}.{name} = {value}")
+            logger.debug(f"Set {self._name}.{name} = {value} (setattr)")
             return True
+
         except Exception as e:
             logger.error(f"Failed to set {name} on '{self._name}': {e}")
             return False
 
+    def _set_calc_mode(self, mode_int: int) -> bool:
+        """Set CalcMode via reflection.
+
+        CalcMode is an enum-typed property not accessible through the
+        ISimulationObject interface, so plain setattr silently fails.
+
+        Args:
+            mode_int: Integer value of the desired CalcMode enum member.
+
+        Returns:
+            True if set successfully.
+        """
+        return self.set_property("CalcMode", mode_int)
+
     def get_property(self, name: str) -> Optional[Any]:
         """Return the value of a property.
+
+        Uses .NET reflection so that Nullable[T] properties (inaccessible via
+        the ISimulationObject interface through getattr) are returned correctly.
 
         Args:
             name: Property name.
 
         Returns:
-            Property value, or None on failure.
+            Property value (unwrapped from Nullable if necessary), or None.
         """
         if self._obj is None:
             return None
 
         try:
+            prop_info = self._obj.GetType().GetProperty(name)
+            if prop_info is not None and prop_info.CanRead:
+                return prop_info.GetValue(self._obj, None)
             return getattr(self._obj, name, None)
         except Exception:
             return None
@@ -205,6 +259,15 @@ class UnitOperationBase(ABC):
             Dictionary with results specific to this unit operation.
         """
         pass
+
+    def _read(self, name: str, default: Any = 0) -> Any:
+        """Read a property, returning *default* when the value is None.
+
+        Delegates to ``get_property`` which uses reflection, so Nullable[T]
+        properties are read correctly even when inaccessible via the interface.
+        """
+        v = self.get_property(name)
+        return v if v is not None else default
 
     def get_error_message(self) -> Optional[str]:
         """Return the error message from the last calculation, if any."""

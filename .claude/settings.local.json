@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell:*)",
+      "Bash(DWSIM_PATH=\"\" python run.py --check)",
+      "Bash(venv/Scripts/pip show:*)",
+      "Bash(venv/Scripts/python simulations/steam_boiler_heat_recovery.py)",
+      "Bash(venv/Scripts/python -c ':*)"
+    ]
+  }
+}

@@ -11,12 +11,21 @@ logger = logging.getLogger(__name__)
 
 
 class PumpCalculationMode(Enum):
-    """Calculation modes for a pump."""
+    """Calculation modes for a pump.
 
-    OUTLET_PRESSURE = 0
-    DELTA_P = 1
-    POWER = 2
-    CURVES = 3
+    DWSIM enum mapping (confirmed from testing):
+      0 = Delta_P         – specify pressure rise (ΔP)
+      1 = OutletPressure  – specify absolute outlet pressure
+      2 = EnergyStream    – power driven by connected energy stream
+      3 = Curves          – use pump performance curves
+      4 = Power           – specify shaft power directly
+    """
+
+    DELTA_P         = 0
+    OUTLET_PRESSURE = 1
+    ENERGY_STREAM   = 2
+    CURVES          = 3
+    POWER           = 4
 
 
 class Pump(UnitOperationBase):
@@ -35,29 +44,30 @@ class Pump(UnitOperationBase):
 
     def set_calculation_mode(self, mode: PumpCalculationMode) -> bool:
         """Set the calculation mode."""
-        return self.set_property("CalcMode", mode.value)
+        return self._set_calc_mode(mode.value)
 
     def set_outlet_pressure(self, pressure_Pa: float) -> bool:
-        """Set the outlet pressure in Pa."""
-        self.set_calculation_mode(PumpCalculationMode.OUTLET_PRESSURE)
+        """Set the outlet pressure in Pa (CalcMode = OUTLET_PRESSURE = 1)."""
+        self._set_calc_mode(PumpCalculationMode.OUTLET_PRESSURE.value)
         return self.set_property("OutletPressure", pressure_Pa)
 
     def set_pressure_increase(self, delta_P_Pa: float) -> bool:
-        """Set the pressure increase in Pa."""
-        self.set_calculation_mode(PumpCalculationMode.DELTA_P)
+        """Set the pressure increase in Pa (CalcMode = DELTA_P = 0)."""
+        self._set_calc_mode(PumpCalculationMode.DELTA_P.value)
         return self.set_property("DeltaP", delta_P_Pa)
 
     def set_power(self, power_kW: float) -> bool:
-        """Set the shaft power consumption in kW."""
-        self.set_calculation_mode(PumpCalculationMode.POWER)
+        """Set the shaft power consumption in kW (CalcMode = POWER = 4)."""
+        self._set_calc_mode(PumpCalculationMode.POWER.value)
         return self.set_property("DeltaQ", power_kW)
 
     def set_efficiency(self, efficiency: float) -> bool:
-        """Set the pump efficiency (0-1).
+        """Set the pump efficiency as a fraction (0–1).
 
-        Note: DWSIM stores this attribute as 'Eficiencia' (Portuguese) internally.
+        Note: DWSIM stores this attribute as 'Eficiencia' (Portuguese)
+        in percent (0–100), so the value is multiplied by 100 before storing.
         """
-        return self.set_property("Eficiencia", efficiency)
+        return self.set_property("Eficiencia", efficiency * 100.0)
 
     def get_results(self) -> dict:
         """Return pump results after calculation."""
@@ -65,12 +75,12 @@ class Pump(UnitOperationBase):
             return {}
 
         return {
-            "power_kW": getattr(self._obj, "DeltaQ", 0),
-            "inlet_pressure_Pa": getattr(self._obj, "InletPressure", 0),
-            "outlet_pressure_Pa": getattr(self._obj, "OutletPressure", 0),
-            "delta_P_Pa": getattr(self._obj, "DeltaP", 0),
-            "efficiency": getattr(self._obj, "Eficiencia", 0),
-            "npsh_available_m": getattr(self._obj, "NPSHa", 0),
+            "power_kW": self._read("DeltaQ"),
+            "inlet_pressure_Pa": self._read("InletPressure"),
+            "outlet_pressure_Pa": self._read("OutletPressure"),
+            "delta_P_Pa": self._read("DeltaP"),
+            "efficiency": self._read("Eficiencia"),
+            "npsh_available_m": self._read("NPSHa"),
         }
 
 
@@ -99,11 +109,11 @@ class Compressor(UnitOperationBase):
 
     def set_calculation_mode(self, mode: CompressorCalculationMode) -> bool:
         """Set the calculation mode."""
-        return self.set_property("CalcMode", mode.value)
+        return self._set_calc_mode(mode.value)
 
     def set_outlet_pressure(self, pressure_Pa: float) -> bool:
         """Set the outlet pressure in Pa."""
-        self.set_calculation_mode(CompressorCalculationMode.OUTLET_PRESSURE)
+        self._set_calc_mode(CompressorCalculationMode.OUTLET_PRESSURE.value)
         return self.set_property("POut", pressure_Pa)
 
     def set_pressure_ratio(self, ratio: float) -> bool:
@@ -112,16 +122,22 @@ class Compressor(UnitOperationBase):
 
     def set_power(self, power_kW: float) -> bool:
         """Set the shaft power consumption in kW."""
-        self.set_calculation_mode(CompressorCalculationMode.POWER)
+        self._set_calc_mode(CompressorCalculationMode.POWER.value)
         return self.set_property("DeltaQ", power_kW)
 
     def set_adiabatic_efficiency(self, efficiency: float) -> bool:
-        """Set the adiabatic (isentropic) efficiency (0-1)."""
-        return self.set_property("AdiabaticEfficiency", efficiency)
+        """Set the adiabatic (isentropic) efficiency as a fraction (0–1).
+
+        DWSIM stores this in percent (0–100) internally.
+        """
+        return self.set_property("AdiabaticEfficiency", efficiency * 100.0)
 
     def set_polytropic_efficiency(self, efficiency: float) -> bool:
-        """Set the polytropic efficiency (0-1)."""
-        return self.set_property("PolytropicEfficiency", efficiency)
+        """Set the polytropic efficiency as a fraction (0–1).
+
+        DWSIM stores this in percent (0–100) internally.
+        """
+        return self.set_property("PolytropicEfficiency", efficiency * 100.0)
 
     def get_results(self) -> dict:
         """Return compressor results after calculation."""
@@ -129,16 +145,16 @@ class Compressor(UnitOperationBase):
             return {}
 
         return {
-            "power_kW": getattr(self._obj, "DeltaQ", 0),
-            "inlet_pressure_Pa": getattr(self._obj, "PIn", 0),
-            "outlet_pressure_Pa": getattr(self._obj, "POut", 0),
-            "pressure_ratio": getattr(self._obj, "PressureRatio", 0),
-            "inlet_temperature_K": getattr(self._obj, "TIn", 0),
-            "outlet_temperature_K": getattr(self._obj, "TOut", 0),
-            "adiabatic_efficiency": getattr(self._obj, "AdiabaticEfficiency", 0),
-            "polytropic_efficiency": getattr(self._obj, "PolytropicEfficiency", 0),
-            "adiabatic_head_m": getattr(self._obj, "AdiabaticHead", 0),
-            "polytropic_head_m": getattr(self._obj, "PolytropicHead", 0),
+            "power_kW": self._read("DeltaQ"),
+            "inlet_pressure_Pa": self._read("PIn"),
+            "outlet_pressure_Pa": self._read("POut"),
+            "pressure_ratio": self._read("PressureRatio"),
+            "inlet_temperature_K": self._read("TIn"),
+            "outlet_temperature_K": self._read("TOut"),
+            "adiabatic_efficiency": self._read("AdiabaticEfficiency"),
+            "polytropic_efficiency": self._read("PolytropicEfficiency"),
+            "adiabatic_head_m": self._read("AdiabaticHead"),
+            "polytropic_head_m": self._read("PolytropicHead"),
         }
 
 
@@ -167,8 +183,11 @@ class Expander(UnitOperationBase):
         return self.set_property("DeltaQ", power_kW)
 
     def set_adiabatic_efficiency(self, efficiency: float) -> bool:
-        """Set the adiabatic efficiency (0-1)."""
-        return self.set_property("AdiabaticEfficiency", efficiency)
+        """Set the adiabatic efficiency as a fraction (0–1).
+
+        DWSIM stores this in percent (0–100) internally.
+        """
+        return self.set_property("AdiabaticEfficiency", efficiency * 100.0)
 
     def get_results(self) -> dict:
         """Return expander results after calculation."""
@@ -176,12 +195,12 @@ class Expander(UnitOperationBase):
             return {}
 
         return {
-            "power_generated_kW": getattr(self._obj, "DeltaQ", 0),
-            "inlet_pressure_Pa": getattr(self._obj, "PIn", 0),
-            "outlet_pressure_Pa": getattr(self._obj, "POut", 0),
-            "inlet_temperature_K": getattr(self._obj, "TIn", 0),
-            "outlet_temperature_K": getattr(self._obj, "TOut", 0),
-            "adiabatic_efficiency": getattr(self._obj, "AdiabaticEfficiency", 0),
+            "power_generated_kW": self._read("DeltaQ"),
+            "inlet_pressure_Pa": self._read("PIn"),
+            "outlet_pressure_Pa": self._read("POut"),
+            "inlet_temperature_K": self._read("TIn"),
+            "outlet_temperature_K": self._read("TOut"),
+            "adiabatic_efficiency": self._read("AdiabaticEfficiency"),
         }
 
 
@@ -223,10 +242,10 @@ class Valve(UnitOperationBase):
             return {}
 
         return {
-            "inlet_pressure_Pa": getattr(self._obj, "InletPressure", 0),
-            "outlet_pressure_Pa": getattr(self._obj, "OutletPressure", 0),
-            "delta_P_Pa": getattr(self._obj, "DeltaP", 0),
-            "inlet_temperature_K": getattr(self._obj, "InletTemperature", 0),
-            "outlet_temperature_K": getattr(self._obj, "OutletTemperature", 0),
-            "opening_pct": getattr(self._obj, "OpeningPct", 0),
+            "inlet_pressure_Pa": self._read("InletPressure"),
+            "outlet_pressure_Pa": self._read("OutletPressure"),
+            "delta_P_Pa": self._read("DeltaP"),
+            "inlet_temperature_K": self._read("InletTemperature"),
+            "outlet_temperature_K": self._read("OutletTemperature"),
+            "opening_pct": self._read("OpeningPct"),
         }

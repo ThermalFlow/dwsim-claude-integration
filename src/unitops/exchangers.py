@@ -11,14 +11,23 @@ logger = logging.getLogger(__name__)
 
 
 class HeatExchangerMode(Enum):
-    """Calculation modes for a heat exchanger."""
+    """Calculation modes for a HeatExchanger (CalculationMode property).
 
-    SPECIFY_UA = 0
-    SPECIFY_OUTLET_TEMPS = 1
-    SPECIFY_AREA = 2
-    SPECIFY_COLD_OUTLET = 3
-    SPECIFY_HOT_OUTLET = 4
-    SPECIFY_DUTY = 5
+    DWSIM enum mapping (confirmed from DWSIM source):
+      0 = CalcTempHotOut  – specify cold-side outlet T, calculate hot-side outlet T
+      1 = CalcTempColdOut – specify hot-side outlet T, calculate cold-side outlet T
+      2 = CalcBothTemp    – specify UA; calculate both outlet temperatures
+      3 = CalcBothTemp_UA – specify area + U; calculate both outlet temperatures
+      4 = CalcArea        – specify duty or UA; calculate required area
+      5 = (duty mode)     – specify duty directly
+    """
+
+    CALC_HOT_OUTLET  = 0  # specify cold outlet T → calc hot outlet T
+    CALC_COLD_OUTLET = 1  # specify hot outlet T  → calc cold outlet T
+    CALC_BOTH_TEMPS  = 2  # specify UA            → calc both outlet temps
+    CALC_BOTH_UA     = 3  # specify area + U      → calc both outlet temps
+    CALC_AREA        = 4  # specify duty/UA       → calc required area
+    SPECIFY_DUTY     = 5  # specify duty directly
 
 
 class HeatExchanger(UnitOperationBase):
@@ -86,14 +95,14 @@ class HeatExchanger(UnitOperationBase):
             return {}
 
         return {
-            "duty_kW": getattr(self._obj, "Q", 0),
-            "hot_inlet_temp_K": getattr(self._obj, "HotSideInletTemperature", 0),
-            "hot_outlet_temp_K": getattr(self._obj, "HotSideOutletTemperature", 0),
-            "cold_inlet_temp_K": getattr(self._obj, "ColdSideInletTemperature", 0),
-            "cold_outlet_temp_K": getattr(self._obj, "ColdSideOutletTemperature", 0),
-            "lmtd_K": getattr(self._obj, "LMTD", 0),
-            "ua_W_K": getattr(self._obj, "OverallUA", 0),
-            "effectiveness": getattr(self._obj, "ThermalEfficiency", 0),
+            "duty_kW": self._read("Q"),
+            "hot_inlet_temp_K": self._read("HotSideInletTemperature"),
+            "hot_outlet_temp_K": self._read("HotSideOutletTemperature"),
+            "cold_inlet_temp_K": self._read("ColdSideInletTemperature"),
+            "cold_outlet_temp_K": self._read("ColdSideOutletTemperature"),
+            "lmtd_K": self._read("LMTD"),
+            "ua_W_K": self._read("OverallUA"),
+            "effectiveness": self._read("ThermalEfficiency"),
         }
 
 
@@ -112,22 +121,22 @@ class Heater(UnitOperationBase):
         super().__init__(flowsheet, name, x, y)
 
     def set_outlet_temperature(self, temperature_K: float) -> bool:
-        """Set the outlet temperature in K."""
-        self.set_property("CalcMode", 0)  # Mode: outlet temperature
+        """Set the outlet temperature in K (CalcMode = OutletTemperature = 1)."""
+        self._set_calc_mode(1)
         return self.set_property("OutletTemperature", temperature_K)
 
     def set_duty(self, duty_kW: float) -> bool:
-        """Set the heater duty in kW."""
-        self.set_property("CalcMode", 1)  # Mode: duty
+        """Set the heater duty in kW (CalcMode = HeatAdded = 0)."""
+        self._set_calc_mode(0)
         return self.set_property("DeltaQ", duty_kW)
 
     def set_vapor_fraction(self, vf: float) -> bool:
-        """Set the outlet vapor fraction.
+        """Set the outlet vapor fraction (CalcMode = OutletVaporFraction = 3).
 
         Args:
             vf: Vapor fraction (0-1).
         """
-        self.set_property("CalcMode", 2)  # Mode: vapor fraction
+        self._set_calc_mode(3)
         return self.set_property("Vfrac", vf)
 
     def set_pressure_drop(self, delta_P_Pa: float) -> bool:
@@ -147,11 +156,11 @@ class Heater(UnitOperationBase):
             return {}
 
         return {
-            "duty_kW": getattr(self._obj, "DeltaQ", 0),
-            "inlet_temperature_K": getattr(self._obj, "InletTemperature", 0),
-            "outlet_temperature_K": getattr(self._obj, "OutletTemperature", 0),
-            "pressure_drop_Pa": getattr(self._obj, "DeltaP", 0),
-            "outlet_vapor_fraction": getattr(self._obj, "Vfrac", 0),
+            "duty_kW": self._read("DeltaQ"),
+            "inlet_temperature_K": self._read("InletTemperature"),
+            "outlet_temperature_K": self._read("OutletTemperature"),
+            "pressure_drop_Pa": self._read("DeltaP"),
+            "outlet_vapor_fraction": self._read("Vfrac"),
         }
 
 
@@ -170,18 +179,19 @@ class Cooler(UnitOperationBase):
         super().__init__(flowsheet, name, x, y)
 
     def set_outlet_temperature(self, temperature_K: float) -> bool:
-        """Set the outlet temperature in K."""
-        self.set_property("CalcMode", 0)
+        """Set the outlet temperature in K (CalcMode = OutletTemperature = 1)."""
+        self._set_calc_mode(1)
         return self.set_property("OutletTemperature", temperature_K)
 
     def set_duty(self, duty_kW: float) -> bool:
-        """Set the cooler duty in kW (positive value; stored as negative internally)."""
-        self.set_property("CalcMode", 1)
+        """Set the cooler duty in kW — positive value; stored negative internally
+        (CalcMode = HeatRemoved = 0)."""
+        self._set_calc_mode(0)
         return self.set_property("DeltaQ", -abs(duty_kW))
 
     def set_vapor_fraction(self, vf: float) -> bool:
-        """Set the outlet vapor fraction."""
-        self.set_property("CalcMode", 2)
+        """Set the outlet vapor fraction (CalcMode = OutletVaporFraction = 2)."""
+        self._set_calc_mode(2)
         return self.set_property("Vfrac", vf)
 
     def set_pressure_drop(self, delta_P_Pa: float) -> bool:
@@ -194,9 +204,9 @@ class Cooler(UnitOperationBase):
             return {}
 
         return {
-            "duty_kW": getattr(self._obj, "DeltaQ", 0),
-            "inlet_temperature_K": getattr(self._obj, "InletTemperature", 0),
-            "outlet_temperature_K": getattr(self._obj, "OutletTemperature", 0),
-            "pressure_drop_Pa": getattr(self._obj, "DeltaP", 0),
-            "outlet_vapor_fraction": getattr(self._obj, "Vfrac", 0),
+            "duty_kW": self._read("DeltaQ"),
+            "inlet_temperature_K": self._read("InletTemperature"),
+            "outlet_temperature_K": self._read("OutletTemperature"),
+            "pressure_drop_Pa": self._read("DeltaP"),
+            "outlet_vapor_fraction": self._read("Vfrac"),
         }
