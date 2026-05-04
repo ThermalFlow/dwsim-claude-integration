@@ -5,7 +5,9 @@
       "Bash(DWSIM_PATH=\"\" python run.py --check)",
       "Bash(venv/Scripts/pip show:*)",
       "Bash(venv/Scripts/python simulations/steam_boiler_heat_recovery.py)",
-      "Bash(venv/Scripts/python -c ':*)"
+      "Bash(venv/Scripts/python -c ':*)",
+      "Bash(xargs grep *)",
+      "Bash(python -c ' *)"
     ]
   }
 }
